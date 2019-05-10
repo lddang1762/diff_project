@@ -67,6 +67,7 @@ para* para_next(para* p) {
 
   return pnew;
 }
+
 size_t para_filesize(para* p) { return p == NULL ? 0 : (size_t) (p->filesize); }
 
 size_t para_size(para* p) { return p == NULL || p->stop < p->start ? 0 : (size_t) (p->stop - p->start + 1); }
@@ -81,10 +82,14 @@ char* para_info(para* p) {
 }
 
 int para_compare(para* p, para* q) {
-  int i = p->start, j = q->start, compare = 0;
+  int i = p->start, j = q->start, compare = 0, line_comp = 0;
   while (i != p->stop && j != q->stop) {
-     compare += strcmp(p->base[i], q->base[j]);
-     ++i; ++j;
+    // line_comp = strcmp(p->base[i], q->base[j]);
+    // printf("Line %d Compared to line %d: %d\n",i, j, line_comp);
+    // printf("\x1B[1;33m""%s"NORMAL, p->base[i]);
+    // printf("\x1B[1;34m""%s"NORMAL, q->base[j]);
+    compare += strcmp(p->base[i], q->base[j]);
+    ++i; ++j;
   }
   return compare;
 }
@@ -93,6 +98,20 @@ int para_equal(para* p, para* q){
   if (p == NULL || q == NULL) { return 0; }
   if (para_size(p) != para_size(q)) { return 0; }
   return para_compare(p, q) == 0 ? 1 : 0;
+}
+
+int is_different(para* p, para* q){
+  if(para_filesize(p) != para_filesize(q)){
+    return 1;
+  }
+  while(p != NULL && q != NULL){
+    if(para_compare(p, q) != 0){
+      return 1;
+    }
+    p = para_next(p);
+    q = para_next(q);
+  }
+  return 0;
 }
 
 void para_print(para* p, void (*fp)(const char*)) {
@@ -141,6 +160,16 @@ void printboth(const char* left_right) {
   if (len > 0) { strncpy(buf, left_right, len); }
   buf[len - 1] = '\0';
   printf(NORMAL"%-63s %s", buf, left_right); }
+
+void printleftnormal(const char* leftnormal){
+  if (leftnormal == NULL) { return; }
+  printf(GREEN"< %s"NORMAL, leftnormal);
+}
+
+void printrightnormal(const char* rightnormal){
+  if (rightnormal == NULL) { return; }
+  printf(RED"> %s"NORMAL, rightnormal);
+}
 
 void version(){ printf("Written by Luc Dang\n"); }
 
@@ -196,18 +225,25 @@ void side_by_side(para* p, para* q){
   }
 }
 
-int is_different(para* p, para* q){
-  if(para_filesize(p) != para_filesize(q)){
-    return 1;
-  }
-  while(p != NULL && q != NULL){
-    if(para_compare(p, q) != 0){
-      return 1;
+void diff_normal(para* p, para* q){
+  while(p != NULL){
+    while(q != NULL && !para_equal(p,q)){
+      para_print(q, printrightnormal);
+      q = para_next(q);
     }
-    p = para_next(p);
+    while(p != NULL && q != NULL && para_equal(p,q)){
+      p = para_next(p);
+      q = para_next(q);
+    }
+    if(p!= NULL){
+      para_print(p, printleftnormal);
+      p = para_next(p);
+    }
+  }
+  while(q != NULL){
+    para_print(q, printrightnormal);
     q = para_next(q);
   }
-  return 0;
 }
 
 int main(int argc, const char *argv[]) {
@@ -236,7 +272,6 @@ int main(int argc, const char *argv[]) {
   para* p = para_first(strings1, count1);
   para* q = para_first(strings2, count2);
 
-
   if(qflag && !sflag){
     if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); }
     return 0;
@@ -249,16 +284,9 @@ int main(int argc, const char *argv[]) {
   }
   if(yflag){
     side_by_side(p,q);
+    return 0;
   }
-  //
-  // printf("p is: %s", para_info(p));
-  // printf("q is: %s", para_info(q));
-  // para_print(p, printleft);
-  // para_print(q, printright);
-  // printf("p and q are equal: %s\n\n", (para_compare(p, q)) == 0 ? "YES" : "NO");
-
-
-
+  diff_normal(p, q);
 
   // printf("\nTODO: check line by line in a paragraph, using '|' for differences");
   // printf("\nTODO: this starter code does not yet handle printing all of fin1's paragraphs.");
