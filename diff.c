@@ -33,7 +33,7 @@ size_t para_filesize(para* p);
 size_t para_size(para* p);
 char** para_base(para* p);
 char* para_info(para* p);
-int   para_equal(para* p, para* q);
+int   para_compare(para* p, para* q);
 void para_print(para* p, void (*fp)(const char*));
 void printleft(const char* left);
 void printright(const char* right);
@@ -80,12 +80,19 @@ char* para_info(para* p) {
   return buf;  // buf MUST be static
 }
 
-int para_equal(para* p, para* q) {
+int para_compare(para* p, para* q) {
+  int i = p->start, j = q->start, compare = 0;
+  while (i != p->stop && j != q->stop) {
+     compare += strcmp(p->base[i], q->base[j]);
+     ++i; ++j;
+  }
+  return compare;
+}
+
+int para_equal(para* p, para* q){
   if (p == NULL || q == NULL) { return 0; }
   if (para_size(p) != para_size(q)) { return 0; }
-  int i = p->start, j = q->start, equal = 0;
-  while (i != para_filesize(p) && j != para_filesize(q) && (equal = strcmp(p->base[i], q->base[j])) == 0) { ++i; ++j; }
-  return equal;
+  return para_compare(p, q) == 0 ? 1 : 0;
 }
 
 void para_print(para* p, void (*fp)(const char*)) {
@@ -106,15 +113,26 @@ void printleft(const char* left) {
 
   strcpy(buf, left);
   int j = 0, len = (int)strlen(buf) - 1;
-  for (j = 0; j <= 48 - len ; ++j) { buf[len + j] = ' '; }
+  for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
   buf[len + j++] = '<';
   buf[len + j++] = '\0';
   printf(GREEN"%s\n"NORMAL, buf);
 }
 
+void printleftcolumn(const char* left){
+  char buf[BUFLEN];
+
+  strcpy(buf, left);
+  int j = 0, len = (int)strlen(buf) - 1;
+  for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
+  buf[len + j++] = '(';
+  buf[len + j++] = '\0';
+  printf("%s\n", buf);
+}
+
 void printright(const char* right) {
   if (right == NULL) { return; }
-  printf(RED"%50s %s"NORMAL, ">", right);
+  printf(RED"%63s %s"NORMAL, ">", right);
 }
 
 void printboth(const char* left_right) {
@@ -122,7 +140,7 @@ void printboth(const char* left_right) {
   size_t len = strlen(left_right);
   if (len > 0) { strncpy(buf, left_right, len); }
   buf[len - 1] = '\0';
-  printf(NORMAL"%-50s %s", buf, left_right); }
+  printf(NORMAL"%-63s %s", buf, left_right); }
 
 void version(){ printf("Written by Luc Dang\n"); }
 
@@ -142,7 +160,7 @@ void init_options_files(int argc, const char* argv[]){
     setoptions(arg, "-c", "--context", &cflag);
     setoptions(arg, "-u", "--unified", &uflag);
     setoptions(arg, "--left-column", NULL, &lcflag);
-    setoptions(arg, "--supress-common-lines", NULL, &sclflag);
+    setoptions(arg, "--suppress-common-lines", NULL, &sclflag);
     setoptions(arg, "--normal", NULL, &normal);
     argv++;
   }
@@ -151,12 +169,19 @@ void init_options_files(int argc, const char* argv[]){
 
 void side_by_side(para* p, para* q){
   while(p != NULL){
-    while(q != NULL && !para_equal(p, q)){
+    while(q != NULL && !para_equal(p,q)){
       para_print(q, printright);
       q = para_next(q);
     }
     while(p != NULL && q != NULL && para_equal(p,q)){
-      para_print(p, printboth);
+      if(!sclflag){
+        if(lcflag){
+          para_print(p, printleftcolumn);
+        }
+        else{
+          para_print(p, printboth);
+        }
+      }
       p = para_next(p);
       q = para_next(q);
     }
@@ -176,7 +201,7 @@ int is_different(para* p, para* q){
     return 1;
   }
   while(p != NULL && q != NULL){
-    if(para_equal(p, q) != 0){
+    if(para_compare(p, q) != 0){
       return 1;
     }
     p = para_next(p);
@@ -217,15 +242,20 @@ int main(int argc, const char *argv[]) {
     return 0;
   }
   if(sflag || (sflag && qflag)){
-    if(!is_different(p,q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); return 0;}
+    if(!is_different(p,q)){
+      printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
+      return 0;
+    }
   }
-  side_by_side(p,q);
+  if(yflag){
+    side_by_side(p,q);
+  }
   //
   // printf("p is: %s", para_info(p));
   // printf("q is: %s", para_info(q));
   // para_print(p, printleft);
   // para_print(q, printright);
-  // printf("p and q are equal: %s\n\n", (para_equal(p, q)) == 0 ? "YES" : "NO");
+  // printf("p and q are equal: %s\n\n", (para_compare(p, q)) == 0 ? "YES" : "NO");
 
 
 
