@@ -265,7 +265,7 @@ int main(int argc, const char *argv[]) {
   memset(strings2, 0, sizeof(strings2));
 
   if (argc < 3) { fprintf(stderr, "Usage: ./diff file1 file2\n");  exit(ARGC_ERROR); }
-  if (argc == 3){ normal = 1; }
+  if (argc == 3 || strcmp(argv[1], "--normal") == 0){ normal = 1; }
 
   init_options_files(--argc, argv++);
 
@@ -286,15 +286,16 @@ int main(int argc, const char *argv[]) {
     if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); }
     return 0;
   }
+  if(yflag){
+    side_by_side(p,q);
+    if(sflag && !is_different(p, q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); }
+    return 0;
+  }
   if(sflag || (sflag && qflag)){
     if(!is_different(p,q)){
       printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
       return 0;
     }
-  }
-  if(yflag){
-    side_by_side(p,q);
-    return 0;
   }
   diff_normal(p, q);
 
