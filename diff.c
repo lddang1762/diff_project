@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define ARGC_ERROR 1
 #define BUFLEN 256
@@ -10,7 +11,7 @@
 #define NORMAL "\x1B[0m"
 
 
-int vflag = 0, qflag = 0, iflag = 0, sflag = 0, yflag = 0,
+static int vflag = 0, qflag = 0, iflag = 0, sflag = 0, yflag = 0,
     cflag = 0, uflag = 0, lcflag = 0, sclflag = 0, normal = 0;
 
 typedef struct para para;
@@ -81,6 +82,14 @@ char* para_info(para* p) {
   return buf;  // buf MUST be static
 }
 
+int strcmp_ignore(char* s, char* t){
+  int compare = 0;
+  while(*s != '\0' && (*s == *t)){
+    s++; t++;
+  }
+  return tolower(*s) - tolower(*t);
+}
+
 int para_compare(para* p, para* q) {
   int i = p->start, j = q->start, compare = 0, line_comp = 0;
   while (i != p->stop && j != q->stop) {
@@ -88,11 +97,12 @@ int para_compare(para* p, para* q) {
     // printf("Line %d Compared to line %d: %d\n",i, j, line_comp);
     // printf("\x1B[1;33m""%s"NORMAL, p->base[i]);
     // printf("\x1B[1;34m""%s"NORMAL, q->base[j]);
-    compare += strcmp(p->base[i], q->base[j]);
+    compare += iflag ? strcmp_ignore(p->base[i], q->base[j]) : strcmp(p->base[i], q->base[j]);
     ++i; ++j;
   }
   return compare;
 }
+
 
 int para_equal(para* p, para* q){
   if (p == NULL || q == NULL) { return 0; }
