@@ -2,17 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #define ARGC_ERROR 1
 #define BUFLEN 256
 #define MAXSTRINGS 1024
-#define GREEN "\x1B[1;32m"
-#define RED "\x1B[1;31m"
-#define NORMAL "\x1B[0m"
 
 
 static int vflag = 0, qflag = 0, iflag = 0, sflag = 0, yflag = 0,
-    cflag = 0, uflag = 0, lcflag = 0, sclflag = 0, normal = 0;
+    cflag = 0, uflag = 0, lcflag = 0, sclflag = 0, normal = 0, num = 3;
 
 typedef struct para para;
 struct para {
@@ -95,14 +94,13 @@ int para_compare(para* p, para* q) {
   while (i != p->stop && j != q->stop) {
     // line_comp = strcmp(p->base[i], q->base[j]);
     // printf("Line %d Compared to line %d: %d\n",i, j, line_comp);
-    // printf("\x1B[1;33m""%s"NORMAL, p->base[i]);
-    // printf("\x1B[1;34m""%s"NORMAL, q->base[j]);
+    // printf("\x1B[1;33m""%s", p->base[i]);
+    // printf("\x1B[1;34m""%s", q->base[j]);
     compare += iflag ? strcmp_ignore(p->base[i], q->base[j]) : strcmp(p->base[i], q->base[j]);
     ++i; ++j;
   }
   return compare;
 }
-
 
 int para_equal(para* p, para* q){
   if (p == NULL || q == NULL) { return 0; }
@@ -146,7 +144,7 @@ void printleft(const char* left) {
   for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
   buf[len + j++] = '<';
   buf[len + j++] = '\0';
-  printf(GREEN"%s\n"NORMAL, buf);
+  printf("%s\n", buf);
 }
 
 void printleftcolumn(const char* left){
@@ -160,9 +158,23 @@ void printleftcolumn(const char* left){
   printf("%s\n", buf);
 }
 
+void para_printcu(para* p) {
+  if (p == NULL) { return; }
+  for (int i = p->start; i < p->start + num && i != p->filesize; ++i) {
+    char buf[BUFLEN];
+
+    strcpy(buf, p->base[i]);
+    int j = 0, len = (int)strlen(buf) - 1;
+    for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
+    buf[len + j++] = '\0';
+      printf("%s\n", buf);
+
+  }
+}
+
 void printright(const char* right) {
   if (right == NULL) { return; }
-  printf(RED"%63s %s"NORMAL, ">", right);
+  printf("%63s %s", ">", right);
 }
 
 void printboth(const char* left_right) {
@@ -170,16 +182,14 @@ void printboth(const char* left_right) {
   size_t len = strlen(left_right);
   if (len > 0) { strncpy(buf, left_right, len); }
   buf[len - 1] = '\0';
-  printf(NORMAL"%-63s %s", buf, left_right); }
-
-void printleftnormal(const char* leftnormal){
-  if (leftnormal == NULL) { return; }
-  printf(GREEN"< %s"NORMAL, leftnormal);
+  printf("%-63s %s", buf, left_right);
 }
 
-void printrightnormal(const char* rightnormal){
-  if (rightnormal == NULL) { return; }
-  printf(RED"> %s"NORMAL, rightnormal);
+void para_printnormal(para* p, const char* character){
+  if (p == NULL) { return; }
+  for (int i = p->start; i <= p->stop && i != p->filesize; ++i) {
+    printf("%s %s", character, p->base[i]);
+  }
 }
 
 void version(){
@@ -257,7 +267,9 @@ void diff_normal(para* p, para* q){
 
     if(foundmatch){
       while((foundmatch = para_equal(p, q)) == 0){
-        para_print(q, printrightnormal);
+        printf("%da", p->start);
+        printf("%d,%d\n", q->start + 1, q->stop + 1);
+        para_printnormal(q, ">");
         q = para_next(q);
         qlast = q;
       }
@@ -265,14 +277,101 @@ void diff_normal(para* p, para* q){
       q = para_next(q);
     }
     else{
-      para_print(p, printleftnormal);
+      printf("%d,%d", p->start + 1, p->stop + 1);
+      printf("d%d\n", q->start);
+      para_printnormal(p, "<");
       p = para_next(p);
     }
   }
   while(q != NULL){
-    para_print(q, printrightnormal);
+    printf("%d,%d\n", q->start + 1, q->stop + 1);
+    para_printnormal(q, ">");
     q = para_next(q);
   }
+}
+
+void diff_context(para* p, para* q){
+  int foundmatch = 0;
+  para* qlast = q;
+  while(p != NULL){
+    qlast = q;
+    foundmatch = 0;
+    while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
+      q = para_next(q);
+    }
+    q = qlast;
+
+    if(foundmatch){
+      while((foundmatch = para_equal(p, q)) == 0){
+        printf("%da", p->start);
+        printf("%d,%d\n", q->start + 1, q->stop + 1);
+        para_printnormal(q, "+");
+        q = para_next(q);
+        qlast = q;
+      }
+      para_printcu(p);
+      p = para_next(p);
+      q = para_next(q);
+    }
+    else{
+      printf("%d,%d", p->start + 1, p->stop + 1);
+      printf("d%d\n", q->start);
+      para_printnormal(p, "-");
+      p = para_next(p);
+    }
+  }
+  while(q != NULL){
+    printf("%d,%d\n", q->start + 1, q->stop + 1);
+    para_printnormal(q, "!");
+    q = para_next(q);
+  }
+}
+
+void diff_unified(para* p, para* q){
+  int foundmatch = 0;
+  para* qlast = q;
+  while(p != NULL){
+    qlast = q;
+    foundmatch = 0;
+    while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
+      q = para_next(q);
+    }
+    q = qlast;
+
+    if(foundmatch){
+      while((foundmatch = para_equal(p, q)) == 0){
+        printf("%da", p->start);
+        printf("%d,%d\n", q->start + 1, q->stop + 1);
+        para_printnormal(q, "+");
+        q = para_next(q);
+        qlast = q;
+      }
+      para_printcu(p);
+      p = para_next(p);
+      q = para_next(q);
+    }
+    else{
+      printf("%d,%d", p->start + 1, p->stop + 1);
+      printf("d%d\n", q->start);
+      para_printnormal(p, "-");
+      p = para_next(p);
+    }
+  }
+  while(q != NULL){
+    printf("---\n");
+    printf("%d,%d\n", q->start + 1, q->stop + 1);
+    para_printnormal(q, "+");
+    q = para_next(q);
+  }
+}
+
+void filestats(const char* file1, const char* file2){
+  struct stat filestat1;
+  struct stat filestat2;
+  stat(file1, &filestat1);
+  stat(file2, &filestat2);
+  printf("%s %s\t%s", cflag ? "***" : "---" , file1, ctime(&filestat1.st_mtime));
+  printf("%s %s\t%s", cflag ? "---" : "+++" , file2, ctime(&filestat2.st_mtime));
 }
 
 int main(int argc, const char *argv[]) {
@@ -298,6 +397,9 @@ int main(int argc, const char *argv[]) {
   while (!feof(fin1) && fgets(buf, BUFLEN, fin1) != NULL) { strings1[count1++] = strdup(buf); }
   while (!feof(fin2) && fgets(buf, BUFLEN, fin2) != NULL) { strings2[count2++] = strdup(buf); }
 
+  fclose(fin1);
+  fclose(fin2);
+
   para* p = para_first(strings1, count1);
   para* q = para_first(strings2, count2);
 
@@ -316,13 +418,21 @@ int main(int argc, const char *argv[]) {
       return 0;
     }
   }
+  if(cflag){
+    filestats(argv[argc-2], argv[argc- 1]);
+    diff_context(p, q);
+    return 0;
+  }
+  if(uflag){
+    filestats(argv[argc-2], argv[argc- 1]);
+    diff_unified(p, q);
+    return 0;
+  }
   diff_normal(p, q);
 
   // printf("\nTODO: check line by line in a paragraph, using '|' for differences");
   // printf("\nTODO: this starter code does not yet handle printing all of fin1's paragraphs.");
   // printf("\nTODO: handle the rest of diff's options\n");
   // printf("\tAs Tolkien said it, '...and miles to go before I sleep.'\n\n");
-  fclose(fin1);
-  fclose(fin2);
   return 0;
 }
