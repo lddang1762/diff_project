@@ -239,7 +239,8 @@ void side_by_side(para* p, para* q){
         q = para_next(q);
         qlast = q;
       }
-      para_print(q, printboth);
+      if(!sclflag)
+        lcflag ? para_print(q, printleftcolumn) : para_print(q, printboth);
       p = para_next(p);
       q = para_next(q);
     }
@@ -284,7 +285,8 @@ void diff_normal(para* p, para* q){
     }
   }
   while(q != NULL){
-    printf("%d,%d\n", q->start + 1, q->stop + 1);
+    //printf("%d,%d\n", q->start + 1, q->stop + 1);
+    printf("---\n");
     para_printnormal(q, ">");
     q = para_next(q);
   }
@@ -321,8 +323,9 @@ void diff_context(para* p, para* q){
     }
   }
   while(q != NULL){
+    printf("---\n");
     printf("%d,%d\n", q->start + 1, q->stop + 1);
-    para_printnormal(q, "!");
+    para_printnormal(q, "+");
     q = para_next(q);
   }
 }
@@ -403,20 +406,21 @@ int main(int argc, const char *argv[]) {
   para* p = para_first(strings1, count1);
   para* q = para_first(strings2, count2);
 
-  if(qflag && !sflag){
-    if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); }
-    return 0;
+  if(qflag || sflag){
+    if(qflag){
+      if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); return 0;}
+    }
+    if(sflag){
+      if(!is_different(p,q)){
+        printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
+        return 0;
+      }
+    }
   }
   if(yflag){
     side_by_side(p,q);
     if(sflag && !is_different(p, q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); }
     return 0;
-  }
-  if(sflag || (sflag && qflag)){
-    if(!is_different(p,q)){
-      printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
-      return 0;
-    }
   }
   if(cflag){
     filestats(argv[argc-2], argv[argc- 1]);
