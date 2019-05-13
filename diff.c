@@ -142,6 +142,7 @@ void printleft(const char* left) {
 
   strcpy(buf, left);
   int j = 0, len = (int)strlen(buf) - 1;
+  if(len > 61) { len = 61; }
   for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
   buf[len + j++] = '<';
   buf[len + j++] = '\0';
@@ -181,13 +182,17 @@ void printrightnormal(const char* rightnormal){
   printf(RED"> %s"NORMAL, rightnormal);
 }
 
-void version(){ printf("Written by Luc Dang\n"); }
+void version(){
+  printf("diff (CSUF diffutils) 1.0.0\n");
+  printf("Copyright (C) 2019 CSUF\n");
+  printf("Written by Luc Dang\n");
+}
 
 void setoptions(const char* arg, const char* s, const char* t, int* value){
     if(strcmp(arg, s) == 0 || (t != NULL && strcmp(arg, t) == 0)){ *value = 1;}
 }
 
-void init_options_files(int argc, const char* argv[]){
+void init_options(int argc, const char* argv[]){
   while(argc-- > 0){
     const char* arg = *argv;
     setoptions(arg, "-v", "--version", &vflag);
@@ -207,24 +212,28 @@ void init_options_files(int argc, const char* argv[]){
 }
 
 void side_by_side(para* p, para* q){
+  int foundmatch = 0;
+  para* qlast = q;
   while(p != NULL){
-    while(q != NULL && !para_equal(p,q)){
-      para_print(q, printright);
+    qlast = q;
+    foundmatch = 0;
+    while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
+      //printf("compare: %d\n", para_compare(p, q));
       q = para_next(q);
     }
-    while(p != NULL && q != NULL && para_equal(p,q)){
-      if(!sclflag){
-        if(lcflag){
-          para_print(p, printleftcolumn);
-        }
-        else{
-          para_print(p, printboth);
-        }
+    q = qlast;
+
+    if(foundmatch){
+      while((foundmatch = para_equal(p, q)) == 0){
+        para_print(q, printright);
+        q = para_next(q);
+        qlast = q;
       }
+      para_print(q, printboth);
       p = para_next(p);
       q = para_next(q);
     }
-    if( p!= NULL){
+    else{
       para_print(p, printleft);
       p = para_next(p);
     }
@@ -236,16 +245,26 @@ void side_by_side(para* p, para* q){
 }
 
 void diff_normal(para* p, para* q){
+  int foundmatch = 0;
+  para* qlast = q;
   while(p != NULL){
-    while(q != NULL && !para_equal(p,q)){
-      para_print(q, printrightnormal);
+    qlast = q;
+    foundmatch = 0;
+    while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
       q = para_next(q);
     }
-    while(p != NULL && q != NULL && para_equal(p,q)){
+    q = qlast;
+
+    if(foundmatch){
+      while((foundmatch = para_equal(p, q)) == 0){
+        para_print(q, printrightnormal);
+        q = para_next(q);
+        qlast = q;
+      }
       p = para_next(p);
       q = para_next(q);
     }
-    if(p!= NULL){
+    else{
       para_print(p, printleftnormal);
       p = para_next(p);
     }
@@ -265,9 +284,9 @@ int main(int argc, const char *argv[]) {
   memset(strings2, 0, sizeof(strings2));
 
   if (argc < 3) { fprintf(stderr, "Usage: ./diff file1 file2\n");  exit(ARGC_ERROR); }
-  if (argc == 3 || strcmp(argv[1], "--normal") == 0){ normal = 1; }
+  if (argc == 3 || (strcmp(argv[1], "--normal") == 0) || (!cflag && !uflag && !yflag && !lcflag)){ normal = 1; }
 
-  init_options_files(--argc, argv++);
+  init_options(--argc, argv++);
 
   if(vflag){ version(); return 0; }
   if((cflag && uflag) || (yflag && uflag) || (yflag && cflag)){ printf("Conflicting output styles\n"); return 1; }
