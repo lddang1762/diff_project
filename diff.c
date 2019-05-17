@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "diff.h"
 
 #define ARGC_ERROR 1
 #define BUFLEN 256
@@ -12,32 +13,6 @@
 
 static int vflag = 0, qflag = 0, iflag = 0, sflag = 0, yflag = 0,
     cflag = 0, uflag = 0, lcflag = 0, sclflag = 0, normal = 0, num = 3;
-
-typedef struct para para;
-struct para {
-  char** base;
-  int filesize;
-  int start;
-  int stop;
-  char* firstline;
-  char* secondline;
-};
-
-FILE* openfile(const char* filename, const char* openflags);
-char* yesorno(int condition);
-para* para_make(char* base[], int size, int start, int stop);
-para* para_first(char* base[], int size);
-void  para_destroy(para* p);
-para* para_next(para* p);
-size_t para_filesize(para* p);
-size_t para_size(para* p);
-char** para_base(para* p);
-char* para_info(para* p);
-int   para_compare(para* p, para* q);
-void para_print(para* p, void (*fp)(const char*));
-void printleft(const char* left);
-void printright(const char* right);
-void printboth(const char* left_right);
 
 para* para_make(char* base[], int filesize, int start, int stop) {
   para* p = (para*) malloc(sizeof(para));
@@ -82,30 +57,28 @@ char* para_info(para* p) {
 }
 
 int strcmp_ignore(char* s, char* t){
-  int compare = 0;
   while(*s != '\0' && (*s == *t)){
     s++; t++;
   }
   return tolower(*s) - tolower(*t);
 }
 
-int para_compare(para* p, para* q) {
-  int i = p->start, j = q->start, compare = 0, line_comp = 0;
-  while (i != p->stop && j != q->stop) {
-    // line_comp = strcmp(p->base[i], q->base[j]);
-    // printf("Line %d Compared to line %d: %d\n",i, j, line_comp);
-    // printf("\x1B[1;33m""%s", p->base[i]);
-    // printf("\x1B[1;34m""%s", q->base[j]);
+int para_equal(para* p, para* q) {
+  if (p == NULL || q == NULL) { return 0; }
+  if (para_size(p) != para_size(q)) { return 0; }
+  if (p->start >= p->filesize || q->start >= q->filesize) { return 0; }
+  int i = p->start, j = q->start, equal = 0;
+  while (i != p->stop && j!= q->stop && (equal = strcmp(p->base[i], q->base[j])) == 0) { ++i; ++j; }
+  return 1;
+}
+
+int para_compare(para* p, para* q){
+  int i = p->start, j = q->start, compare = 0;
+  while(i != p->stop && j != q->stop){
     compare += iflag ? strcmp_ignore(p->base[i], q->base[j]) : strcmp(p->base[i], q->base[j]);
     ++i; ++j;
   }
   return compare;
-}
-
-int para_equal(para* p, para* q){
-  if (p == NULL || q == NULL) { return 0; }
-  if (para_size(p) != para_size(q)) { return 0; }
-  return para_compare(p, q) == 0 ? 1 : 0;
 }
 
 int is_different(para* p, para* q){
@@ -126,8 +99,6 @@ void para_print(para* p, void (*fp)(const char*)) {
   if (p == NULL) { return; }
   for (int i = p->start; i <= p->stop && i != p->filesize; ++i) { fp(p->base[i]); }
 }
-
-char* yesorno(int condition) { return condition == 0 ? "NO" : "YES"; }
 
 FILE* openfile(const char* filename, const char* openflags) {
   FILE* f;
@@ -177,13 +148,34 @@ void printright(const char* right) {
   printf("%63s %s", ">", right);
 }
 
-void printboth(const char* left_right) {
-  char buf[BUFLEN];
-  size_t len = strlen(left_right);
-  if (len > 0) { strncpy(buf, left_right, len); }
-  buf[len - 1] = '\0';
-  printf("%-63s %s", buf, left_right);
+//print both logic courtesy of Professor McCarthy
+void para_printboth(para* p, para* q, void (*fp)(const char*, const char*)) {
+  if (p == NULL || q == NULL) { return; }
+  for (int i = p->start, j = q->start; i <= p->stop && i != p->filesize
+                                    && j <= q->stop && j != q->filesize; ++i, ++j) {
+    fp(p->base[i], q->base[j]);
+  }
 }
+void printbothhelper(const char* left, const char* right, int leftparen, int nocommon, char symbol){
+  char buf[BUFLEN];
+  symbol = ((strcmp(left, right) == 0) ? symbol : '|');
+  size_t len = strlen(left);
+  if(len > 0) { strncpy(buf, left, len); }
+  buf[len - 1] = '\0';
+
+  if(symbol != '|' && nocommon == 1) { return; }
+
+  printf("%-61s %c ", buf, symbol);
+  if(symbol == '|'){
+    printf("%s", right);
+  }
+  else{
+    printf("%s", (leftparen ? "\n" : right));
+  }
+}
+void printnocommon(const char* left, const char* right) { printbothhelper(left, right, 0,1, ' '); }
+void printleftparen(const char* left, const char* right) { printbothhelper(left, right, 1,0, '('); }
+void printboth(const char* left, const char* right) { printbothhelper(left, right, 0,0, ' '); }
 
 void para_printnormal(para* p, const char* character){
   if (p == NULL) { return; }
@@ -195,7 +187,11 @@ void para_printnormal(para* p, const char* character){
 void version(){
   printf("diff (CSUF diffutils) 1.0.0\n");
   printf("Copyright (C) 2019 CSUF\n");
-  printf("Written by Luc Dang\n");
+  printf("This program comes with NO WARRANTY, to the extent permitted by law.\n");
+  printf("You may redistribute copies of this program\n");
+  printf("under the terms of the GNU General Public License.\n");
+  printf("For more information about these matters, see the file named COPYING.\n");
+  printf("\nWritten by Luc Dang\n");
 }
 
 void setoptions(const char* arg, const char* s, const char* t, int* value){
@@ -228,7 +224,6 @@ void side_by_side(para* p, para* q){
     qlast = q;
     foundmatch = 0;
     while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
-      //printf("compare: %d\n", para_compare(p, q));
       q = para_next(q);
     }
     q = qlast;
@@ -239,8 +234,9 @@ void side_by_side(para* p, para* q){
         q = para_next(q);
         qlast = q;
       }
-      if(!sclflag)
-        lcflag ? para_print(q, printleftcolumn) : para_print(q, printboth);
+      if(sclflag){ para_printboth(p, q, printnocommon); }
+      else if(lcflag){ para_printboth(p, q, printleftparen); }
+      else { para_printboth(p, q, printboth);  }
       p = para_next(p);
       q = para_next(q);
     }
@@ -286,7 +282,7 @@ void diff_normal(para* p, para* q){
   }
   while(q != NULL){
     //printf("%d,%d\n", q->start + 1, q->stop + 1);
-    printf("---\n");
+    //printf("---\n");
     para_printnormal(q, ">");
     q = para_next(q);
   }
@@ -417,6 +413,7 @@ int main(int argc, const char *argv[]) {
       }
     }
   }
+
   if(yflag){
     side_by_side(p,q);
     if(sflag && !is_different(p, q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); }
