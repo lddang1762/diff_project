@@ -14,6 +14,74 @@
 static int vflag = 0, qflag = 0, iflag = 0, sflag = 0, yflag = 0,
     cflag = 0, uflag = 0, lcflag = 0, sclflag = 0, normal = 0, num = 3;
 
+int main(int argc, const char *argv[]) {
+  char buf[BUFLEN];
+  char *strings1[MAXSTRINGS], *strings2[MAXSTRINGS];
+
+  memset(buf, 0, sizeof(buf));
+  memset(strings1, 0, sizeof(strings1));
+  memset(strings2, 0, sizeof(strings2));
+
+  if (argc < 3) { fprintf(stderr, "Usage: ./diff file1 file2\n");  exit(ARGC_ERROR); }
+  if (argc == 3 || (strcmp(argv[1], "--normal") == 0) || (!cflag && !uflag && !yflag && !lcflag)){ normal = 1; }
+
+  init_options(--argc, argv++);
+
+  if(vflag){ version(); return 0; }
+  if((cflag && uflag) || (yflag && uflag) || (yflag && cflag)){ printf("Conflicting output styles\n"); return 1; }
+
+  FILE *fin1 = openfile(argv[argc-2], "r");
+  FILE *fin2 = openfile(argv[argc-1], "r");
+
+  int count1 = 0, count2 = 0;
+  while (!feof(fin1) && fgets(buf, BUFLEN, fin1) != NULL) { strings1[count1++] = strdup(buf); }
+  while (!feof(fin2) && fgets(buf, BUFLEN, fin2) != NULL) { strings2[count2++] = strdup(buf); }
+
+  fclose(fin1);
+  fclose(fin2);
+
+  para* p = para_first(strings1, count1);
+  para* q = para_first(strings2, count2);
+
+  if(qflag || sflag){
+    if(qflag){
+      if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); return 0;}
+    }
+    if(sflag){
+      if(!is_different(p,q)){
+        printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
+        return 0;
+      }
+    }
+  }
+
+  if(yflag){
+    side_by_side(p,q);
+    if(sflag && !is_different(p, q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); }
+    return 0;
+  }
+  if(cflag){
+    printf("(context diff unfinished.)\n" );
+    filestats(argv[argc-2], argv[argc- 1]);
+    printf("***************\n");
+    diff_context(p, q);
+    return 0;
+  }
+  if(uflag){
+    printf("(unified diff unfinished.)\n" );
+    filestats(argv[argc-2], argv[argc- 1]);
+    diff_unified(p, q);
+    return 0;
+  }
+  diff_normal(p, q);
+
+  // printf("\nTODO: check line by line in a paragraph, using '|' for differences");
+  // printf("\nTODO: this starter code does not yet handle printing all of fin1's paragraphs.");
+  // printf("\nTODO: handle the rest of diff's options\n");
+  // printf("\tAs Tolkien said it, '...and miles to go before I sleep.'\n\n");
+  return 0;
+}
+
 para* para_make(char* base[], int filesize, int start, int stop) {
   para* p = (para*) malloc(sizeof(para));
   p->base = base;
@@ -24,14 +92,11 @@ para* para_make(char* base[], int filesize, int start, int stop) {
   p->secondline = (p == NULL || start < 0 || filesize < 2) ? NULL : p->base[start + 1];
   return p;
 }
-
 para* para_first(char* base[], int size) {
   para* p = para_make(base, size, 0, -1);
   return para_next(p);
 }
-
 void para_destroy(para* p) { free(p); }
-
 para* para_next(para* p) {
   if (p->stop == p->filesize) { return NULL; }
 
@@ -42,27 +107,21 @@ para* para_next(para* p) {
 
   return pnew;
 }
-
 size_t para_filesize(para* p) { return p == NULL ? 0 : (size_t) (p->filesize); }
-
 size_t para_size(para* p) { return p == NULL || p->stop < p->start ? 0 : (size_t) (p->stop - p->start + 1); }
-
 char** para_base(para* p) { return p->base; }
-
 char* para_info(para* p) {
   static char buf[BUFLEN];   // static for a reason
   snprintf(buf, sizeof(buf), "base: %p, filesize: %d, start: %d, stop: %d\n",
                   (void *)p->base, p->filesize, p->start, p->stop);
   return buf;  // buf MUST be static
 }
-
 int strcmp_ignore(char* s, char* t){
   while(*s != '\0' && (*s == *t)){
     s++; t++;
   }
   return tolower(*s) - tolower(*t);
 }
-
 int para_equal(para* p, para* q) {
   if (p == NULL || q == NULL) { return 0; }
   if (para_size(p) != para_size(q)) { return 0; }
@@ -71,7 +130,6 @@ int para_equal(para* p, para* q) {
   while (i != p->stop && j!= q->stop && (equal = strcmp(p->base[i], q->base[j])) == 0) { ++i; ++j; }
   return 1;
 }
-
 int para_compare(para* p, para* q){
   int i = p->start, j = q->start, compare = 0;
   while(i != p->stop && j != q->stop){
@@ -80,7 +138,6 @@ int para_compare(para* p, para* q){
   }
   return compare;
 }
-
 int is_different(para* p, para* q){
   if(para_filesize(p) != para_filesize(q)){
     return 1;
@@ -94,11 +151,17 @@ int is_different(para* p, para* q){
   }
   return 0;
 }
-
 void para_print(para* p, void (*fp)(const char*)) {
   if (p == NULL) { return; }
   for (int i = p->start; i <= p->stop && i != p->filesize; ++i) { fp(p->base[i]); }
 }
+void para_printnormal(para* p, const char* character){
+  if (p == NULL) { return; }
+  for (int i = p->start; i <= p->stop && i != p->filesize; ++i) {
+    printf("%s %s", character, p->base[i]);
+  }
+}
+
 
 FILE* openfile(const char* filename, const char* openflags) {
   FILE* f;
@@ -117,7 +180,6 @@ void printleft(const char* left) {
   buf[len + j++] = '\0';
   printf("%s\n", buf);
 }
-
 void printleftcolumn(const char* left){
   char buf[BUFLEN];
 
@@ -128,7 +190,6 @@ void printleftcolumn(const char* left){
   buf[len + j++] = '\0';
   printf("%s\n", buf);
 }
-
 void para_printcu(para* p) {
   if (p == NULL) { return; }
   for (int i = p->start; i < p->start + num && i != p->filesize; ++i) {
@@ -138,16 +199,14 @@ void para_printcu(para* p) {
     int j = 0, len = (int)strlen(buf) - 1;
     for (j = 0; j <= 61 - len ; ++j) { buf[len + j] = ' '; }
     buf[len + j++] = '\0';
-      printf("%s\n", buf);
+      printf("  %s\n", buf);
 
   }
 }
-
 void printright(const char* right) {
   if (right == NULL) { return; }
   printf("%63s %s", ">", right);
 }
-
 //print both logic courtesy of Professor McCarthy
 void para_printboth(para* p, para* q, void (*fp)(const char*, const char*)) {
   if (p == NULL || q == NULL) { return; }
@@ -177,12 +236,6 @@ void printnocommon(const char* left, const char* right) { printbothhelper(left, 
 void printleftparen(const char* left, const char* right) { printbothhelper(left, right, 1,0, '('); }
 void printboth(const char* left, const char* right) { printbothhelper(left, right, 0,0, ' '); }
 
-void para_printnormal(para* p, const char* character){
-  if (p == NULL) { return; }
-  for (int i = p->start; i <= p->stop && i != p->filesize; ++i) {
-    printf("%s %s", character, p->base[i]);
-  }
-}
 
 void version(){
   printf("diff (CSUF diffutils) 1.0.0\n");
@@ -252,15 +305,16 @@ void side_by_side(para* p, para* q){
 }
 
 void diff_normal(para* p, para* q){
-  int foundmatch = 0;
-  para* qlast = q;
+  int foundmatch = 0, lastline = -1;
+  para* qlast = q, *plast = p;
   while(p != NULL){
     qlast = q;
+    plast = p;
     foundmatch = 0;
     while(q != NULL && (foundmatch = para_equal(p, q)) == 0){
       q = para_next(q);
     }
-    q = qlast;
+    q = qlast; p = plast;
 
     if(foundmatch){
       while((foundmatch = para_equal(p, q)) == 0){
@@ -269,20 +323,39 @@ void diff_normal(para* p, para* q){
         para_printnormal(q, ">");
         q = para_next(q);
         qlast = q;
+        plast = p;
       }
+      int i = p->start, j = q->start;
+      while (i != p->stop && j!= q->stop) {
+        if(strcmp(p->base[i], q->base[j]) != 0){
+          printf("%dc%d\n",i+1 ,j+1);
+          printf("< %s", p->base[i]);
+          printf("---\n");
+          printf("> %s", q->base[j]);
+        }
+        ++i; ++j;
+      }
+      qlast = q;
+      plast = p;
       p = para_next(p);
+      if(para_next(q) == NULL){
+        lastline = q->stop;
+      }
       q = para_next(q);
+
     }
     else{
-      printf("%d,%d", p->start + 1, p->stop + 1);
-      printf("d%d\n", q->start);
+      printf("%d,%d", p->start+1, p->stop+1);
+      //printf("%s\n", q->firstline);
+      printf("d%d\n", lastline == -1 ? q->start : lastline );
       para_printnormal(p, "<");
       p = para_next(p);
     }
   }
   while(q != NULL){
-    //printf("%d,%d\n", q->start + 1, q->stop + 1);
-    //printf("---\n");
+    p = plast;
+    printf("%da", p->stop);
+    printf("%d,%d\n", q->start, q->stop);
     para_printnormal(q, ">");
     q = para_next(q);
   }
@@ -371,69 +444,4 @@ void filestats(const char* file1, const char* file2){
   stat(file2, &filestat2);
   printf("%s %s\t%s", cflag ? "***" : "---" , file1, ctime(&filestat1.st_mtime));
   printf("%s %s\t%s", cflag ? "---" : "+++" , file2, ctime(&filestat2.st_mtime));
-}
-
-int main(int argc, const char *argv[]) {
-  char buf[BUFLEN];
-  char *strings1[MAXSTRINGS], *strings2[MAXSTRINGS];
-
-  memset(buf, 0, sizeof(buf));
-  memset(strings1, 0, sizeof(strings1));
-  memset(strings2, 0, sizeof(strings2));
-
-  if (argc < 3) { fprintf(stderr, "Usage: ./diff file1 file2\n");  exit(ARGC_ERROR); }
-  if (argc == 3 || (strcmp(argv[1], "--normal") == 0) || (!cflag && !uflag && !yflag && !lcflag)){ normal = 1; }
-
-  init_options(--argc, argv++);
-
-  if(vflag){ version(); return 0; }
-  if((cflag && uflag) || (yflag && uflag) || (yflag && cflag)){ printf("Conflicting output styles\n"); return 1; }
-
-  FILE *fin1 = openfile(argv[argc-2], "r");
-  FILE *fin2 = openfile(argv[argc-1], "r");
-
-  int count1 = 0, count2 = 0;
-  while (!feof(fin1) && fgets(buf, BUFLEN, fin1) != NULL) { strings1[count1++] = strdup(buf); }
-  while (!feof(fin2) && fgets(buf, BUFLEN, fin2) != NULL) { strings2[count2++] = strdup(buf); }
-
-  fclose(fin1);
-  fclose(fin2);
-
-  para* p = para_first(strings1, count1);
-  para* q = para_first(strings2, count2);
-
-  if(qflag || sflag){
-    if(qflag){
-      if(is_different(p,q)){ printf("Files %s and %s differ\n", argv[argc-2], argv[argc-1]); return 0;}
-    }
-    if(sflag){
-      if(!is_different(p,q)){
-        printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]);
-        return 0;
-      }
-    }
-  }
-
-  if(yflag){
-    side_by_side(p,q);
-    if(sflag && !is_different(p, q)){ printf("Files %s and %s are identical\n", argv[argc-2], argv[argc-1]); }
-    return 0;
-  }
-  if(cflag){
-    filestats(argv[argc-2], argv[argc- 1]);
-    diff_context(p, q);
-    return 0;
-  }
-  if(uflag){
-    filestats(argv[argc-2], argv[argc- 1]);
-    diff_unified(p, q);
-    return 0;
-  }
-  diff_normal(p, q);
-
-  // printf("\nTODO: check line by line in a paragraph, using '|' for differences");
-  // printf("\nTODO: this starter code does not yet handle printing all of fin1's paragraphs.");
-  // printf("\nTODO: handle the rest of diff's options\n");
-  // printf("\tAs Tolkien said it, '...and miles to go before I sleep.'\n\n");
-  return 0;
 }
